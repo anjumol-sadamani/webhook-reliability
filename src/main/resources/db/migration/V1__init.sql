@@ -15,13 +15,13 @@ CREATE TABLE sources (
 );
 
 CREATE TABLE events (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    source_id     UUID NOT NULL REFERENCES sources(id),
-    event_id      TEXT NOT NULL,
-    body          JSONB NOT NULL,
-    published_at  TIMESTAMPTZ,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (source_id, event_id)
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_id        UUID NOT NULL REFERENCES sources(id),
+    idempotency_key  TEXT NOT NULL,
+    body             JSONB NOT NULL,
+    published_at     TIMESTAMPTZ,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (source_id, idempotency_key)
 );
 
 
