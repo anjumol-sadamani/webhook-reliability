@@ -18,16 +18,15 @@ recommend safe replays.
 External system that owns the events. 
 
 ### Ingestion API
-Public HTTP Endpoint (`POST /events`). Responsible for:
-- authenticating the tenant
-- validating the payload
-- enforcing request-level rate limiting 
-- client-side retry of the POST doesn't create a duplicate
-  event
-- generating the platform's own event identifier (`webhook-id`, a
-  UUIDv7)
-- writing the event, its idempotency record, and its outbox row to
-  Postgres in a single transaction
+Public HTTP Endpoints:
+- `POST /api/v1/sources` - Register a webhook source
+- `POST /api/v1/events/{sourceId}` - Receive events from providers
+
+Responsible for:
+- extracting idempotency key from event body (via JSONPath) or HTTP header (based on source config)
+- deduplicating events (same source + idempotency key = skip)
+- generating the platform's own event identifier (UUID)
+- writing the event to Postgres
 
 
 ### PostgreSQL — events, idempotency, outbox, deliveries, retry schedule
@@ -91,3 +90,54 @@ Kafka so the delivery worker picks them up again.
 
 See `docs/decisions/` for the reasoning behind individual choices once
 those are written up as ADRs.
+
+
+## Ingestion Flow
+
+### 1. Register webhook source
+
+```
+POST /api/v1/sources
+{
+  "name": "Stripe",
+  "eventIdSource": "BODY",
+  "eventIdPath": "$.id",
+  "destinationUrl": "https://customer.com/webhooks"
+}
+
+Response:
+{
+  "sourceId": "550e8400-e29b-41d4-a716-446655440000",
+  "webhookUrl": "https://api.example.com/api/v1/events/550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+`eventIdSource` determines where the idempotency key is extracted from:
+- `BODY` - extract from JSON body using JSONPath (e.g., `"eventIdPath": "$.id"`)
+- `HEADER` - extract from HTTP header (e.g., `"eventIdPath": "X-Idempotency-Key"`)
+
+### 2. Configure webhook URL in provider
+
+Customer configures the `webhookUrl` in their provider (Stripe, GitHub, etc).
+
+### 3. Provider sends event
+
+```
+POST /api/v1/events/{sourceId}
+{
+  "id": "evt_456",
+  "type": "payment_intent.succeeded",
+  "data": { ... }
+}
+```
+
+### 4. Ingestion service processes event
+
+1. Fetch Source config from DB
+2. Extract idempotency key based on `eventIdSource`:
+   - If `BODY` → use JSONPath on request body (e.g., `$.id` → `"evt_456"`)
+   - If `HEADER` → read from HTTP header (e.g., `X-Idempotency-Key`)
+3. Check if event exists (source_id + idempotency_key)
+4. If duplicate → return 202 (idempotent)
+5. If new → save to `events` table, return 202
+

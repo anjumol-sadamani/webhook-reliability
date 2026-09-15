@@ -1,5 +1,6 @@
 package com.webhook_reliability.common.repository;
 
+import com.webhook_reliability.common.entity.KeySource;
 import com.webhook_reliability.common.entity.Source;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -16,9 +17,8 @@ public class SourceRepository {
     private static final RowMapper<Source> ROW_MAPPER = (rs, rowNum) -> new Source(
         rs.getObject("id", UUID.class),
         rs.getString("name"),
-        rs.getString("event_id_location"),
+        KeySource.valueOf(rs.getString("event_id_source")),
         rs.getString("event_id_path"),
-        rs.getString("event_id_header"),
         rs.getString("destination_url"),
         rs.getTimestamp("created_at").toInstant()
     );
@@ -29,14 +29,13 @@ public class SourceRepository {
 
     public Source save(Source source) {
         return jdbc.sql("""
-            INSERT INTO sources (name, event_id_location, event_id_path, event_id_header, destination_url)
-            VALUES (:name, :eventIdLocation, :eventIdPath, :eventIdHeader, :destinationUrl)
+            INSERT INTO sources (name, event_id_source, event_id_path, destination_url)
+            VALUES (:name, :eventIdSource, :eventIdPath, :destinationUrl)
             RETURNING *
             """)
             .param("name", source.name())
-            .param("eventIdLocation", source.eventIdLocation())
+            .param("eventIdSource", source.eventIdSource().name())
             .param("eventIdPath", source.eventIdPath())
-            .param("eventIdHeader", source.eventIdHeader())
             .param("destinationUrl", source.destinationUrl())
             .query(ROW_MAPPER)
             .single();
