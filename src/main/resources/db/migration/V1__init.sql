@@ -1,17 +1,12 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE sources (
-    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name               TEXT NOT NULL,
-    event_id_location  TEXT NOT NULL CHECK (event_id_location IN ('body', 'header')),
-    event_id_path      TEXT,
-    event_id_header    TEXT,
-    destination_url    TEXT NOT NULL,
-    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT event_id_rule_matches_location CHECK (
-        (event_id_location = 'body'   AND event_id_path   IS NOT NULL AND event_id_header IS NULL)
-     OR (event_id_location = 'header' AND event_id_header IS NOT NULL AND event_id_path   IS NULL)
-    )
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name             TEXT NOT NULL,
+    event_id_source  TEXT NOT NULL CHECK (event_id_source IN ('BODY', 'HEADER')),
+    event_id_path    TEXT NOT NULL,      -- JSONPath if BODY (e.g., "$.id"), header name if HEADER (e.g., "X-Idempotency-Key")
+    destination_url  TEXT NOT NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE events (

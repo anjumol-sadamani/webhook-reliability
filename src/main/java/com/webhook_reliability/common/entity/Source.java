@@ -6,16 +6,12 @@ import java.util.UUID;
 public record Source(
     UUID id,
     String name,
-    String eventIdLocation,  // "body" or "header"
-    String eventIdPath,      // JSON path when location is "body"
-    String eventIdHeader,    // header name when location is "header"
+    KeySource eventIdSource, // BODY or HEADER
+    String eventIdPath,      // JSONPath if BODY (e.g., "$.id"), header name if HEADER (e.g., "X-Idempotency-Key")
     String destinationUrl,
     Instant createdAt
 ) {
-    public static Source create(String name, String eventIdLocation,
-                                 String eventIdPath, String eventIdHeader,
-                                 String destinationUrl) {
-        return new Source(null, name, eventIdLocation, eventIdPath,
-                          eventIdHeader, destinationUrl, null);
+    public static Source create(String name, KeySource eventIdSource, String eventIdPath, String destinationUrl) {
+        return new Source(null, name, eventIdSource, eventIdPath, destinationUrl, null);
     }
 }
