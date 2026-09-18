@@ -33,3 +33,9 @@ prevent a recovering endpoint from being hit with every accumulated
 retry at once. Tenant-level backpressure means one consistently-failing
 tenant doesn't consume disproportionate scheduler and Kafka capacity at
 the expense of healthy tenants.
+
+## Future Work (v2)
+- **Per-tenant circuit breaker**: Track rolling failure count per tenant.
+  Once it crosses a threshold, stretch that tenant's backoff further than
+  the standard schedule. Reset the counter on the next successful delivery.
+  Deferred from v1 to keep the Delivery Worker simple.
