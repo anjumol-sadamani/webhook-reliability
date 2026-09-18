@@ -9,10 +9,12 @@ public record Delivery(
     Instant nextRetryAt,
     int attemptCount,
     String status,       // "pending", "delivered", "dead_lettered"
+    Integer lastStatusCode,
+    String lastError,
     Instant createdAt,
     Instant updatedAt
 ) {
     public static Delivery create(UUID eventId) {
-        return new Delivery(null, eventId, Instant.now(), 0, "pending", null, null);
+        return new Delivery(null, eventId, Instant.now(), 0, "pending", null, null, null, null);
     }
 }

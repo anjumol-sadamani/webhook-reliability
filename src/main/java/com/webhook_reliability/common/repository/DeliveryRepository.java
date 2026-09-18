@@ -22,6 +22,8 @@ public class DeliveryRepository {
         rs.getTimestamp("next_retry_at").toInstant(),
         rs.getInt("attempt_count"),
         rs.getString("status"),
+        rs.getObject("last_status_code", Integer.class),
+        rs.getString("last_error"),
         rs.getTimestamp("created_at").toInstant(),
         rs.getTimestamp("updated_at").toInstant()
     );
@@ -61,34 +63,49 @@ public class DeliveryRepository {
             .list();
     }
 
-    public void markDelivered(UUID id) {
+    public void markDelivered(UUID id, int statusCode) {
         jdbc.sql("""
             UPDATE deliveries
-            SET status = 'delivered', updated_at = now()
+            SET status = 'delivered',
+                last_status_code = :statusCode,
+                last_error = NULL,
+                updated_at = now()
             WHERE id = :id
             """)
             .param("id", id)
+            .param("statusCode", statusCode)
             .update();
     }
 
-    public void scheduleRetry(UUID id, Instant nextRetryAt) {
+    public void scheduleRetry(UUID id, Instant nextRetryAt, int statusCode, String error) {
         jdbc.sql("""
             UPDATE deliveries
-            SET next_retry_at = :nextRetryAt, attempt_count = attempt_count + 1, updated_at = now()
+            SET next_retry_at = :nextRetryAt,
+                attempt_count = attempt_count + 1,
+                last_status_code = :statusCode,
+                last_error = :error,
+                updated_at = now()
             WHERE id = :id
             """)
             .param("id", id)
             .param("nextRetryAt", Timestamp.from(nextRetryAt))
+            .param("statusCode", statusCode)
+            .param("error", error)
             .update();
     }
 
-    public void markDeadLettered(UUID id) {
+    public void markDeadLettered(UUID id, int statusCode, String error) {
         jdbc.sql("""
             UPDATE deliveries
-            SET status = 'dead_lettered', updated_at = now()
+            SET status = 'dead_lettered',
+                last_status_code = :statusCode,
+                last_error = :error,
+                updated_at = now()
             WHERE id = :id
             """)
             .param("id", id)
+            .param("statusCode", statusCode)
+            .param("error", error)
             .update();
     }
 }
