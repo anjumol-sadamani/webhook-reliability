@@ -1,4 +1,4 @@
-# ADR 0003: JdbcTemplate over JPA
+# ADR 0003: JdbcClient over JPA
 
 ## Status
 Accepted
