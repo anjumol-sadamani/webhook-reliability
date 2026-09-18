@@ -69,7 +69,7 @@ Key properties in `application.properties`:
 See `docs/decisions/` for architecture decisions:
 - **0001**: Manual Kafka offset commit after writing delivery outcome to DB
 - **0002**: Exponential backoff 30s→1h, max 15 attempts
-- **0003**: JdbcTemplate over JPA for performance
+- **0003**: JdbcClient over JPA for performance
 - **0004**: Single consolidated PostgreSQL database for all concerns
 
 ## Tech Stack
@@ -78,3 +78,6 @@ See `docs/decisions/` for architecture decisions:
 - PostgreSQL 16 with Flyway migrations
 - Apache Kafka 3.7.0
 - Testcontainers for integration tests
+
+## Git
+- Only commit staged files. Show the commit message before committing.
