@@ -38,14 +38,14 @@ the delivery-attempt audit trail the AI ops assistant reads from.
 
 
 ### Outbox publisher
-Polls the outbox table and publishes to Kafka, partitioned by tenant ID.
+Polls the outbox table and publishes to Kafka, partitioned by source ID.
 
 **Why this exists:**  the classic dual-write problem, solved by never
 attempting the dual write.
 
 ### Kafka
 Internal event buffer.
-Topic partitioned by tenant ID, which gives per-tenant ordered delivery. 
+Topic partitioned by source ID, which gives per-source ordered delivery. 
 
 ### Delivery Worker
 Consumes from Kafka. Calls the tenant endpoint over HTTPS using the
@@ -76,7 +76,7 @@ Kafka so the delivery worker picks them up again.
   rows back up.
 - **One consolidated Postgres store** instead of separate physical
   stores for idempotency, outbox, deliveries, and retry schedule.
-- **Kafka topic partitioned by tenant ID** for ordered per-tenant
+- **Kafka topic partitioned by source ID** for ordered per-source
   delivery.
 - Add tenant-level backpressure: track a rolling failure count per tenant, and once it
   crosses a threshold, stretch that tenant's backoff further instead of retrying on 
