@@ -38,7 +38,7 @@ the delivery-attempt audit trail the AI ops assistant reads from.
 
 
 ### Outbox publisher
-Polls the outbox table and publishes to Kafka, partitioned by tenant ID.
+Polls the outbox table and publishes to Kafka, partitioned by source ID.
 
 **Why this exists:**  the classic dual-write problem, solved by never
 attempting the dual write.

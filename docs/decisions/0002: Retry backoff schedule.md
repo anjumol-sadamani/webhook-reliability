@@ -8,6 +8,9 @@ architecture.md named "exponential backoff" without concrete numbers,
 an attempt cap, or a maximum age before dead-lettering.
 
 ## Decision
+**Any non-2xx response is considered a failure and retried** until max
+attempts. 
+
 Delay doubles per attempt, capped at 1 hour, jittered ±20% to avoid
 retries synchronizing into bursts:
 

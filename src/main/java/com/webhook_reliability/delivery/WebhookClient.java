@@ -52,7 +52,7 @@ public class WebhookClient {
             return DeliveryResult.success(statusCode);
 
         } catch (org.springframework.web.client.HttpClientErrorException e) {
-            // 4xx - client error, don't retry (except maybe 429)
+            // 4xx - retried per ADR-0002
             int statusCode = e.getStatusCode().value();
             String error = e.getResponseBodyAsString();
             log.warn("Webhook delivery failed (client error) to {}: {} - {}", url, statusCode, error);
