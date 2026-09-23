@@ -94,18 +94,14 @@ public class DeliveryRepository {
             .update();
     }
 
-    public void markDeadLettered(UUID id, int statusCode, String error) {
+    public void markFailed(UUID id) {
         jdbc.sql("""
             UPDATE deliveries
-            SET status = 'dead_lettered',
-                last_status_code = :statusCode,
-                last_error = :error,
+            SET status = 'failed',
                 updated_at = now()
             WHERE id = :id
             """)
             .param("id", id)
-            .param("statusCode", statusCode)
-            .param("error", error)
             .update();
     }
 }

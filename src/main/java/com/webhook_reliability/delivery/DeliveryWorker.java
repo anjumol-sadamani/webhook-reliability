@@ -2,8 +2,10 @@ package com.webhook_reliability.delivery;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.webhook_reliability.common.entity.DeadLetter;
 import com.webhook_reliability.common.entity.Delivery;
 import com.webhook_reliability.common.entity.Source;
+import com.webhook_reliability.common.repository.DeadLetterRepository;
 import com.webhook_reliability.common.repository.DeliveryRepository;
 import com.webhook_reliability.common.repository.SourceRepository;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -31,16 +33,19 @@ public class DeliveryWorker {
     private final ObjectMapper objectMapper;
     private final SourceRepository sourceRepository;
     private final DeliveryRepository deliveryRepository;
+    private final DeadLetterRepository deadLetterRepository;
     private final WebhookClient webhookClient;
 
     public DeliveryWorker(
             ObjectMapper objectMapper,
             SourceRepository sourceRepository,
             DeliveryRepository deliveryRepository,
+            DeadLetterRepository deadLetterRepository,
             WebhookClient webhookClient) {
         this.objectMapper = objectMapper;
         this.sourceRepository = sourceRepository;
         this.deliveryRepository = deliveryRepository;
+        this.deadLetterRepository = deadLetterRepository;
         this.webhookClient = webhookClient;
     }
 
@@ -50,32 +55,39 @@ public class DeliveryWorker {
         try {
             message = objectMapper.readValue(record.value(), DeliveryMessage.class);
         } catch (JsonProcessingException e) {
-            log.error("Failed to deserialize message, skipping: {}", record.value(), e);
+            // Record to dead_letters per ADR-0001 (commit only after DB write)
+            deadLetterRepository.save(DeadLetter.forDeserialization(
+                record.topic(), record.partition(), record.offset(),
+                record.value(), e.getMessage()
+            ));
+            log.error("Dead-lettered unparseable message at {}:{}:{}",
+                record.topic(), record.partition(), record.offset(), e);
             ack.acknowledge();
             return;
         }
 
         try {
-            processDelivery(message);
+            processDelivery(message, record);
         } catch (Exception e) {
             log.error("Failed to process delivery for event {}: {}", message.eventId(), e.getMessage(), e);
             // Don't acknowledge - let Kafka redeliver
-            // Note: This could cause infinite loops for poison messages.
-            // In production, consider a dead-letter queue after N redeliveries.
             throw e;
         }
 
         ack.acknowledge();
     }
 
-    private void processDelivery(DeliveryMessage message) {
+    private void processDelivery(DeliveryMessage message, ConsumerRecord<String, String> record) {
         UUID eventId = message.eventId();
         UUID sourceId = message.sourceId();
 
         // Look up source to get destination URL
         Optional<Source> sourceOpt = sourceRepository.findById(sourceId);
         if (sourceOpt.isEmpty()) {
-            log.error("Source {} not found for event {}, cannot deliver", sourceId, eventId);
+            deadLetterRepository.save(DeadLetter.forSourceNotFound(
+                eventId, record.topic(), record.partition(), record.offset()
+            ));
+            log.error("Source {} not found for event {}, dead-lettered", sourceId, eventId);
             return;
         }
         Source source = sourceOpt.get();
@@ -90,9 +102,9 @@ public class DeliveryWorker {
             return;
         }
 
-        // Check if dead-lettered (shouldn't happen via Kafka, but defensive)
-        if ("dead_lettered".equals(delivery.status())) {
-            log.warn("Event {} is dead-lettered, skipping", eventId);
+        // Check if already failed (shouldn't happen via Kafka, but defensive)
+        if ("failed".equals(delivery.status())) {
+            log.warn("Event {} already failed, skipping", eventId);
             return;
         }
 
@@ -116,8 +128,12 @@ public class DeliveryWorker {
         int nextAttempt = delivery.attemptCount() + 1;
 
         if (nextAttempt >= BackoffCalculator.MAX_ATTEMPTS) {
-            deliveryRepository.markDeadLettered(delivery.id(), result.statusCode(), result.error());
-            log.warn("Event {} dead-lettered after {} attempts", delivery.eventId(), nextAttempt);
+            // Record to dead_letters with full context, then mark delivery as failed
+            deadLetterRepository.save(DeadLetter.forMaxRetries(
+                delivery.eventId(), nextAttempt, result.statusCode(), result.error()
+            ));
+            deliveryRepository.markFailed(delivery.id());
+            log.warn("Event {} failed after {} attempts, see dead_letters", delivery.eventId(), nextAttempt);
         } else {
             var nextRetryAt = BackoffCalculator.nextRetryAt(nextAttempt);
             deliveryRepository.scheduleRetry(delivery.id(), nextRetryAt, result.statusCode(), result.error());

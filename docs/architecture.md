@@ -62,12 +62,12 @@ Kafka so the delivery worker picks them up again.
 ## Key decisions
 
 - Ingestion idempotency uses the event ID the source already sends.
-- **`webhook-id`** (platform-generated UUIDv7) is a separate concern from
-  the key above — it's what the *tenant* uses for their own idempotent
-  processing of deliveries, assigned once at ingestion and reused
-  unchanged across every retry. UUIDv7 is time-ordered, which lets the
-  outbox publisher and retry scheduler query "oldest due" efficiently
-  without a separate timestamp index.
+- **`webhook-id`** header sent to tenants is the platform's `events.id`
+  (UUIDv7, generated at ingestion). This is separate from the source's
+  idempotency key — it's what the *tenant* uses for their own idempotent
+  processing of deliveries. Unchanged across every retry. UUIDv7 is
+  time-ordered, which lets the outbox publisher and retry scheduler query
+  "oldest due" efficiently without a separate timestamp index.
 - Outbox publisher concurrency: SELECT ... FOR UPDATE SKIP LOCKED, not a manual 
   locked_by column. Multiple publisher instances can run at once — each grabs a
   batch of unpublished rows and locks them; other instances skip those rows instead 

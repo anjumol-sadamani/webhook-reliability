@@ -2,8 +2,10 @@ package com.webhook_reliability.delivery;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.webhook_reliability.common.entity.DeadLetter;
 import com.webhook_reliability.common.entity.Delivery;
 import com.webhook_reliability.common.entity.Event;
+import com.webhook_reliability.common.repository.DeadLetterRepository;
 import com.webhook_reliability.common.repository.DeliveryRepository;
 import com.webhook_reliability.common.repository.EventRepository;
 import org.slf4j.Logger;
@@ -32,6 +34,7 @@ public class RetryScheduler {
     private static final Logger log = LoggerFactory.getLogger(RetryScheduler.class);
 
     private final DeliveryRepository deliveryRepository;
+    private final DeadLetterRepository deadLetterRepository;
     private final EventRepository eventRepository;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
@@ -44,10 +47,12 @@ public class RetryScheduler {
 
     public RetryScheduler(
             DeliveryRepository deliveryRepository,
+            DeadLetterRepository deadLetterRepository,
             EventRepository eventRepository,
             KafkaTemplate<String, String> kafkaTemplate,
             ObjectMapper objectMapper) {
         this.deliveryRepository = deliveryRepository;
+        this.deadLetterRepository = deadLetterRepository;
         this.eventRepository = eventRepository;
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
@@ -74,9 +79,13 @@ public class RetryScheduler {
     private void republishDelivery(Delivery delivery) throws Exception {
         Optional<Event> eventOpt = eventRepository.findById(delivery.eventId());
         if (eventOpt.isEmpty()) {
-            log.error("Event {} not found for delivery {}, marking as dead-lettered",
+            // Event was deleted - record to dead_letters and mark failed
+            deadLetterRepository.save(DeadLetter.forMaxRetries(
+                delivery.eventId(), delivery.attemptCount(), null, "Event not found during retry"
+            ));
+            deliveryRepository.markFailed(delivery.id());
+            log.error("Event {} not found for delivery {}, marked as failed",
                 delivery.eventId(), delivery.id());
-            deliveryRepository.markDeadLettered(delivery.id(), 0, "Event not found");
             return;
         }
 
