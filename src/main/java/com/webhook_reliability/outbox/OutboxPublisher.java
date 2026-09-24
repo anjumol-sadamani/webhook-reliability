@@ -29,6 +29,9 @@ public class OutboxPublisher {
     @Value("${outbox.batch-size}")
     private int batchSize;
 
+    @Value("${outbox.enabled:true}")
+    private boolean enabled;
+
     public OutboxPublisher(
             EventRepository eventRepository,
             KafkaTemplate<String, String> kafkaTemplate,
@@ -39,6 +42,13 @@ public class OutboxPublisher {
     }
 
     @Scheduled(fixedDelayString = "${outbox.poll-interval-ms}")
+    public void scheduledPublish() {
+        if (!enabled) {
+            return;
+        }
+        publishPendingEvents();
+    }
+
     public void publishPendingEvents() {
         List<Event> events = eventRepository.findUnpublished(batchSize);
 
