@@ -42,4 +42,18 @@ public record DeadLetter(
             null, null, "Source not found", 0, null
         );
     }
+
+    /**
+     * Factory for non-transient infrastructure errors caught by the Kafka error handler.
+     * Used when retries are exhausted and the error is not recoverable.
+     */
+    public static DeadLetter forInfrastructureError(
+            UUID eventId, String topic, int partition, long offset,
+            String rawPayload, String error) {
+        return new DeadLetter(
+            null, eventId, "INFRASTRUCTURE_ERROR",
+            topic, partition, offset,
+            rawPayload, null, error, 0, null
+        );
+    }
 }

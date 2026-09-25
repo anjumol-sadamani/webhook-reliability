@@ -31,17 +31,24 @@ public class EventRepository {
         this.jdbc = jdbc;
     }
 
+    /**
+     * Idempotent save: inserts the event or returns the existing one if duplicate.
+     * Uses ON CONFLICT DO NOTHING to handle concurrent duplicate requests gracefully.
+     */
     public Event save(Event event) {
-        return jdbc.sql("""
+        jdbc.sql("""
             INSERT INTO events (source_id, idempotency_key, body)
             VALUES (:sourceId, :idempotencyKey, :body::jsonb)
-            RETURNING *
+            ON CONFLICT (source_id, idempotency_key) DO NOTHING
             """)
             .param("sourceId", event.sourceId())
             .param("idempotencyKey", event.idempotencyKey())
             .param("body", event.body())
-            .query(ROW_MAPPER)
-            .single();
+            .update();
+
+        // Return the row (either newly inserted or existing)
+        return findBySourceIdAndIdempotencyKey(event.sourceId(), event.idempotencyKey())
+            .orElseThrow(() -> new IllegalStateException("Event should exist after insert"));
     }
 
     public Optional<Event> findById(UUID id) {
