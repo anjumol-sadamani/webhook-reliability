@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -35,18 +36,21 @@ public class DeliveryWorker {
     private final DeliveryRepository deliveryRepository;
     private final DeadLetterRepository deadLetterRepository;
     private final WebhookClient webhookClient;
+    private final TransactionTemplate transactionTemplate;
 
     public DeliveryWorker(
             ObjectMapper objectMapper,
             SourceRepository sourceRepository,
             DeliveryRepository deliveryRepository,
             DeadLetterRepository deadLetterRepository,
-            WebhookClient webhookClient) {
+            WebhookClient webhookClient,
+            TransactionTemplate transactionTemplate) {
         this.objectMapper = objectMapper;
         this.sourceRepository = sourceRepository;
         this.deliveryRepository = deliveryRepository;
         this.deadLetterRepository = deadLetterRepository;
         this.webhookClient = webhookClient;
+        this.transactionTemplate = transactionTemplate;
     }
 
     @KafkaListener(topics = "${outbox.topic}", groupId = "${delivery.consumer-group}")
@@ -70,7 +74,9 @@ public class DeliveryWorker {
             processDelivery(message, record);
         } catch (Exception e) {
             log.error("Failed to process delivery for event {}: {}", message.eventId(), e.getMessage(), e);
-            // Don't acknowledge - let Kafka redeliver
+            // Rethrow to let KafkaErrorHandler manage retry/dead-letter per ADR-0005:
+            // - Transient errors (DB down): infinite retry with backoff
+            // - Non-transient errors: retry then dead-letter
             throw e;
         }
 
@@ -128,11 +134,13 @@ public class DeliveryWorker {
         int nextAttempt = delivery.attemptCount() + 1;
 
         if (nextAttempt >= BackoffCalculator.MAX_ATTEMPTS) {
-            // Record to dead_letters with full context, then mark delivery as failed
-            deadLetterRepository.save(DeadLetter.forMaxRetries(
-                delivery.eventId(), nextAttempt, result.statusCode(), result.error()
-            ));
-            deliveryRepository.markFailed(delivery.id());
+            // Atomically record to dead_letters and mark delivery as failed
+            transactionTemplate.executeWithoutResult(status -> {
+                deadLetterRepository.save(DeadLetter.forMaxRetries(
+                    delivery.eventId(), nextAttempt, result.statusCode(), result.error()
+                ));
+                deliveryRepository.markFailed(delivery.id());
+            });
             log.warn("Event {} failed after {} attempts, see dead_letters", delivery.eventId(), nextAttempt);
         } else {
             var nextRetryAt = BackoffCalculator.nextRetryAt(nextAttempt);
