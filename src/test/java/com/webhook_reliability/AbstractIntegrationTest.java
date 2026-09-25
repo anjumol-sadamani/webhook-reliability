@@ -50,6 +50,8 @@ public abstract class AbstractIntegrationTest {
         registry.add("spring.flyway.baseline-version", () -> "0");
         // Disable scheduled outbox publisher to prevent race conditions in tests
         registry.add("outbox.enabled", () -> "false");
+        // Start from earliest offset so tests don't miss messages
+        registry.add("spring.kafka.consumer.auto-offset-reset", () -> "earliest");
     }
 
     @LocalServerPort
